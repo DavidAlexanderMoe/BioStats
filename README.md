@@ -1,2 +1,1 @@
 # BioStats
-Some BioStatistics analyses.
