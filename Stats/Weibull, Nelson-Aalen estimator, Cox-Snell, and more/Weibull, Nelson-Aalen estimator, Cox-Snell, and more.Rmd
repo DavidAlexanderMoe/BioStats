@@ -1,0 +1,332 @@
+---
+title: "Weibull, Nelson-Aalen estimator, Cox-Snell, and more"
+author: "David Alexander Moe"
+output: github_document
+---
+
+```{r}
+library(survival)
+
+#####################################################
+# Illustrating the AFT model for a binary covariate
+#####################################################
+
+
+phi=0.5
+lambda=1/4
+time=seq(from=0,to=20,by=0.1)
+S_0=exp(-lambda*time)
+S_1=exp(-lambda*time*phi)
+
+plot(time,S_0,type="l",col="black",lwd=2,xlab="Time",ylab="Survival",xaxs="i",yaxs="i")
+lines(time,S_1,col="red",lwd=2)
+
+phi=1.5
+lambda=1/4
+time=seq(from=0,to=20,by=0.1)
+S_0=exp(-lambda*time)
+S_1=exp(-lambda*time*phi)
+
+plot(time,S_0,type="l",col="black",lwd=2,xlab="Time",ylab="Survival",xaxs="i",yaxs="i")
+lines(time,S_1,col="red",lwd=2)
+
+
+#####################################################################
+#library(survival)
+library(KMsurv)
+
+###################################
+#Weibull Regression - simulated data
+###################################
+
+n=200
+# Genero due covariate:
+Z_1=runif(n)
+Z_2=rbinom(n,size=1,prob=0.4)
+
+temp=runif(n)
+# Generate errors from a an extreme value distribution
+# The Weibull distribution can also be characterized in terms of a uniform distribution: 
+# if U is uniformly distributed  on (0,1), then the random variable 
+# W=\lambda (-\ln(U))^{1/k} is Weibull distributed with parameter k and \lambda. 
+# IF W is Weibull, then ln(W) is extreme value, see also help(survreg.distributions)
+W=log(-log(temp))
+
+mu=1
+gamma_1=0.2
+gamma_2=0.5
+sigma=0.5
+# Generate times from an AFT:
+T=exp(mu+gamma_1*Z_1+gamma_2*Z_2+sigma*W)
+help(survreg)
+sim_model=survreg(Surv(T,rep(1,n))~Z_1+Z_2,dist="weibull")
+summary(sim_model)
+# Note log(0.5) = -0.6931
+
+
+###############################
+#Weibull Regression
+###############################
+data(alloauto)
+help(alloauto)
+
+alloauto$auto=as.numeric(alloauto$type==2)
+allo_data=subset(alloauto,alloauto$type==1)
+auto_data=subset(alloauto,alloauto$type==2)
+head(allo_data)
+
+weibull_model_allo=survreg(Surv(time,delta)~1,dist="weibull",data=allo_data)
+summary(weibull_model_allo)
+
+exp_model_allo=survreg(Surv(time,delta)~1,dist="exponential",data=allo_data)
+summary(exp_model_allo)
+
+# LRT of two nested models (Wibull is a generalization of the exponential distribution with one more parameter => 1 degree of freedom)
+2*(1-pchisq(2*(weibull_model_allo$loglik[1]-exp_model_allo$loglik[1]),1))
+
+weibull_model_auto=survreg(Surv(time,delta)~1,dist="weibull",data=auto_data)
+summary(weibull_model_auto)
+
+exp_model_auto=survreg(Surv(time,delta)~1,dist="exponential",data=auto_data)
+summary(exp_model_auto)
+
+2*(1-pchisq(2*(weibull_model_auto$loglik[1]-exp_model_auto$loglik[1]),1))
+
+weibull_model=survreg(Surv(time,delta)~auto,dist="weibull",data=alloauto)
+summary(weibull_model)
+
+###############################
+#Q-Q plot
+###############################
+km_est_allo=survfit(Surv(time,delta)~1,data=allo_data)
+km_est_auto=survfit(Surv(time,delta)~1,data=auto_data)
+
+#quick visual check
+plot(km_est_allo)
+#Note that the surv function for the allo group cannot be estimated for values of t>20 (correspond to 40 percentile)
+plot(km_est_auto)
+
+q=seq(from=0,to=0.4,by=0.1)
+t_allo=rep(NA,length(q))
+t_auto=rep(NA,length(q))
+for(i in 1:length(q))
+{
+  t_allo[i]=surv_quantile=min(km_est_allo$time[km_est_allo$surv<=(1-q[i])])
+  t_auto[i]=surv_quantile=min(km_est_auto$time[km_est_auto$surv<=(1-q[i])])
+}
+plot(t_auto,t_allo,type="l",xlab="Estimated percentile for auto group",ylab="Estimated percentile for allo group",xlim=c(0,13),ylim=c(0,13))
+#Check whether the survival times have the same distribution in the two groups
+
+###############################
+#Univariate Models - model fit
+###############################
+
+#######Allo group
+#NA estimate
+km_est_allo=survfit(Surv(time,delta)~1,data=allo_data)
+
+#Nelson Aalen Estimate
+D_j=summary(km_est_allo)$n.event
+Y_j=summary(km_est_allo)$n.risk
+t_j=summary(km_est_allo)$time
+
+NA_est_allo=rep(NA,length(t_j))
+for(i in 1:length(t_j))
+{
+  NA_est_allo[i]=sum((D_j/Y_j)[t_j<=t_j[i]])
+}
+
+#Exponential
+plot(c(0,t_j),c(0,NA_est_allo),type="p",pch=20,xlab="t",ylab=expression(Lambda(t)))
+lines(c(0,t_j[length(t_j)-1]),c(0,NA_est_allo[length(NA_est_allo)-1]),type="l",lty=2)
+#"Lambda(t)")
+
+#Weibull
+plot(log(t_j),log(NA_est_allo),type="p",pch=20,xlab="log(t)",ylab=expression(log(Lambda(t))))
+lines(c(log(t_j)[1],log(t_j)[length(t_j)]),c(log(NA_est_allo)[1],log(NA_est_allo)[length(NA_est_allo)]),type="l",lty=2)
+
+# #Log-logistic
+plot(log(t_j),log(exp(NA_est_allo)-1),type="p",pch=20,xlab="log(t)",ylab=expression(log(exp(Lambda(t))-1)))
+lines(c(log(t_j)[1],log(t_j)[length(t_j)]),c(log(exp(NA_est_allo)-1)[1],log(exp(NA_est_allo)-1)[length(NA_est_allo)]),type="l",lty=2)
+
+# #Log-Normal
+#plot(log(t_j),qnorm(1-exp(-NA_est_allo)),type="p",pch=20,xlab="t",ylab="Phi^(-1)[1-exp{-Lambda(t)}]")
+#lines(c(log(t_j)[1],log(t_j)[length(t_j)]),c(qnorm(1-exp(-NA_est_allo))[1],qnorm(1-exp(-NA_est_allo))[length(NA_est_allo)]),type="l",lty=2)
+
+#######Auto group
+#NA estimate
+km_est_auto=survfit(Surv(time,delta)~1,data=auto_data)
+
+#Nelson Aalen Estimate
+D_j=summary(km_est_auto)$n.event
+Y_j=summary(km_est_auto)$n.risk
+t_j=summary(km_est_auto)$time
+
+NA_est_auto=rep(NA,length(t_j))
+for(i in 1:length(t_j))
+{
+  NA_est_auto[i]=sum((D_j/Y_j)[t_j<=t_j[i]])
+}
+
+#Exponential
+plot(c(0,t_j),c(0,NA_est_auto),type="p",pch=20,xlab="t",ylab=expression(Lambda(t)))
+lines(c(0,t_j[length(t_j)]),c(0,NA_est_auto[length(NA_est_auto)]),type="l",lty=2)
+
+#Weibull
+plot(log(t_j),log(NA_est_auto),type="p",pch=20,xlab="log(t)",ylab=expression(log(Lambda(t))))
+lines(c(log(t_j)[1],log(t_j)[length(t_j)]),c(log(NA_est_auto)[1],log(NA_est_auto)[length(NA_est_auto)]),type="l",lty=2)
+
+# #Log-logistic
+plot(log(t_j),log(exp(NA_est_auto)-1),type="p",pch=20,xlab="t",ylab=expression(log(exp(Lambda(t))-1)))
+lines(c(log(t_j)[1],log(t_j)[length(t_j)]),c(log(exp(NA_est_auto)-1)[1],log(exp(NA_est_auto)-1)[length(NA_est_auto)]),type="l",lty=2)
+
+
+###############################
+#Cox-Snell residuals
+###############################
+##############Exponential
+exponential_model=survreg(Surv(time,delta)~auto,dist="exponential",data=alloauto)
+summary(exponential_model)
+
+#Vedi slide 5.40
+#Calculate Cox-Snell residuals for exponential AFT - and their KM estimate
+#Vedi slide 5.42
+r_exp=alloauto$time*exp(-(exponential_model$linear.predictors))
+km_est=survfit(Surv(r_exp,alloauto$delta)~1)
+
+#Nelson Aalen Estimate
+D_j=km_est$n.event
+Y_j=km_est$n.risk
+t_j=km_est$time
+NA_est_exp=rep(NA,length(D_j))
+for(i in 1:length(D_j))
+{
+  NA_est_exp[i]=sum((D_j/Y_j)[t_j<=t_j[i]])
+}
+# Note that km_est$time are the residuals for the non-cesored observations
+# Note 2: Cox-Snell residuals should follow a unit exponential distribution, or equivalently the 
+# plot of their cumulative hazard function Vs the residuals should 
+# give a straight line with unit slope   
+plot(km_est$time,NA_est_exp,type="l",xlab="r_i",ylab="Estimated hazard of r_i")
+lines(c(0,5),c(0,5),lty=2)
+
+##############Weibull
+weibull_model=survreg(Surv(time,delta)~auto,dist="weibull",data=alloauto)
+summary(weibull_model)
+
+#Vedi slide 5.40
+#Calculate Cox-Snell residuals for Weibull AFT - and their KM estimate
+r_weibull=(alloauto$time^(1/weibull_model$scale))*exp(-(weibull_model$linear.predictors)/weibull_model$scale)
+km_est=survfit(Surv(r_weibull,alloauto$delta)~1)
+
+#Nelson Aalen Estimate
+t_j=km_est$time
+D_j=km_est$n.event
+Y_j=km_est$n.risk
+NA_est_weibull=rep(NA,length(D_j))
+for(i in 1:length(D_j))
+{
+  NA_est_weibull[i]=sum((D_j/Y_j)[t_j<=t_j[i]])
+}
+plot(km_est$time,NA_est_weibull,type="l",xlab="r_i",ylab="Estimated hazard of r_i")
+lines(c(0,5),c(0,5),lty=2)
+
+########Example with multiple covariates
+data(bmt)
+help(bmt)
+head(bmt)
+test=survreg(Surv(t1,d1)~z1+z3+z9,data=bmt,dist="weibull")
+summary(test)
+
+
+
+#################################################
+################# COX PH ########################
+#################################################
+
+setwd("G:/Il mio Drive/TRIENNALE/Biostatistica/BioStats/Data")
+source("G:/Il mio Drive/TRIENNALE/Biostatistica/BioStats/Functions.R")
+##	Read in breast cancer data
+brca <- read.table("brca.txt", header=TRUE )
+head(brca)
+
+
+##
+#####	KM plot estimates of survival
+##
+#kmPlot(survfit(Surv(time,idead) ~ ihresp, data=brca ), xscale=0.0001, 
+#       groupLabels=c("IH Positive", "IH Negative"), ymarOffset=0)
+plot(survfit(Surv(time,idead) ~ ihresp, data=brca ))
+legend(90, 1, lty=1:2, legend=c("IH Positive", "IH Negative"), bty="n" )
+
+##
+#####	Fit Cox model to obtain HR estimate
+##
+help(coxph)
+fit <- coxph( Surv( time, idead ) ~ ihresp, data=brca )
+summary( fit )
+
+
+##
+#####
+#####	Larynx cancer example from K & M (1.8)
+#####
+##
+larynx <- read.table( "larynx.txt" )
+larynx[1:10,]
+
+##
+#####	Fit Cox model
+##
+fit <- coxph( Surv( t2death, death ) ~ age + factor(stage), data=larynx )
+summary( fit )
+
+
+##
+#####	LR test of stage
+##
+fit.red <- coxph( Surv( t2death, death ) ~ age, data=larynx )
+anova(fit.red, fit)
+
+##
+#####	LR test of age by stage interaction
+##
+fit.int <- coxph( Surv( t2death, death ) ~ age*factor(stage), data=larynx )
+summary( fit.int )
+anova(fit, fit.int)
+
+# Testing "other" effects (functions from Funzioni.R)
+##
+
+##
+#####	Estimate 5-year "effect" of age
+##
+# Suppose we were interested in the 5-year effect of age. then 5 \beta_1 is the 
+# log-relative hazard comparing populations that differ in age at diagnosis by five years:
+# Could re-fit the model, using I(age/5), or....
+linContr.coxph( model=fit, contr.names="age", contr.coef=5 )
+
+##
+#####	Compare stage 3 to stage 2
+# Suppose we wished to compare the age-adjusted hazard for stage 3 subjects to that of a stage 2 
+# subjects . . .
+# Example: compare stage 3 65 year-olds to a stage 2 65-year olds
+# (\beta_3-\beta_2) is the log-hazard ratio of stage 3 subjects compared to stage 2 
+# subjects who are similar in age
+##
+linContr.coxph( model=fit, contr.names=c("factor(stage)3", "factor(stage)2"), contr.coef=c(1,-1) )
+
+linContr.coxph( model=fit, contr.names=c("factor(stage)4", "factor(stage)3"), contr.coef=c(1,-1) )
+
+#####	Estimate relative hazard stage3:stage1 for 70 year olds 
+# Investigate Effect Modification: 
+# Compare stage 3 70 year olds to a stage 1 70 year olds
+#(beta_3 + 70 beta_6) is the log-relative hazard comparing these two subpopulations
+##
+linContr.coxph( model=fit.int, contr.names=c("factor(stage)3", "age:factor(stage)3"), contr.coef=c(1,70) )
+
+# From the output below, we estimate that the risk of death among 70 year old 
+# stage 3 patients is approximately 1.97-times that of 70 year old stage 1 
+# patients(95% CI: 0.904, 4.298). This result is not significant based upon a level .05 test.
+```
+
