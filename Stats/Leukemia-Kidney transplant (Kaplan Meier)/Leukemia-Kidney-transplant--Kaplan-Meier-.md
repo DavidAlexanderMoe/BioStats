@@ -1,7 +1,7 @@
 The 6-MP versus placebo clinical trial in acute leukemia (Gehan EA1,
 Freireich EJ.)
 ================
-Clin Trials. 2011 Jun;8(3):288-97. doi: 10.1177/1740774511407358.
+Clinical Trials. 2011 Jun;8(3):288-97. doi: 10.1177/1740774511407358.
 
 ## BACKGROUND:
 
