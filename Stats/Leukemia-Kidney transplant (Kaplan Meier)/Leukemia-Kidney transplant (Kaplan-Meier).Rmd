@@ -1,0 +1,177 @@
+---
+title: "The 6-MP versus placebo clinical trial in acute leukemia (Gehan EA1, Freireich EJ.)"
+author: "Clin Trials. 2011 Jun;8(3):288-97. doi: 10.1177/1740774511407358."
+date: 
+output: github_document
+---
+
+## BACKGROUND: 
+
+This article gives the status of clinical cancer research in the 1950's-1960's and tells the story of the development and conduct of the 6-mercaptopurine (6-MP) versus placebo clinical trial in acute leukemia through the initiation, design, conduct and analysis stages, with emphasis on the ethical aspects of randomizing patients to 6-MP or placebo when in remission.
+
+## PURPOSE:
+
+The specific objective was to compare the lengths of remission for patients receiving 6-MP or placebo after achieving complete or partial remission from steroid treatment.
+
+## METHODS:
+
+A randomized, double-blind, placebo controlled sequential study was conducted in which patients were paired by remission status at each of the eleven institutions participating in the study, and randomized to 6-MP or placebo within each pair of patients. A preference for 6-MP or placebo was recorded depending on which patient in the pair had the longer remission. The preferences were plotted according to a restricted sequential procedure devised by Peter Armitage and, depending on which boundary of the design was crossed, a statistically significant difference could be declared favoring 6-MP, placebo or no preference.
+
+## CONCLUSIONS:
+
+The trial established the efficacy of 6-MP for maintaining longer remissions in acute leukemia and led to the concept of 'adjuvant chemotherapy', namely that patients with minimal disease have a substantially better response to chemotherapy than patients with advanced disease, a concept that has been followed in many other forms of cancer. Statistically, the fact that many patients were still in remission when the study was stopped (i.e. the length of remission data for these patients was 'right censored') led to the development of a generalized Wilcoxon test and was an important influence on Cox's development of the proportional hazards model. The trial had an innovative design in the early 1960's and has been an important influence on subsequent clinical research in cancer and statistical research in survival analysis.
+
+```{r}
+library(survival)
+library(KMsurv) # it needs to be installed
+
+###########################
+#Class example
+###########################
+
+#Load data
+X=c(2,5,8,12,15,21,25,29,30,34)
+delta=c(1,0,1,0,1,0,1,1,0,1) # 1: osservato, 0: censurato
+cbind(X,delta)
+
+#KM Estimate 
+help(Surv)
+Surv(X,delta) #curva di sopravvivenza
+help(survfit) #stima KM curva di sopravvivenza, stima di una distrib marginale non condizionata a nessuna covariata
+est1=survfit(Surv(X,delta)~1)
+
+summ_est1=summary(est1)
+summ_est1
+# Chiedere di interpretare i ci, come sono stati calcolati?
+# ultimo s.e. e' zero per definizione se corrisponde a tempo osservato
+
+S_KM=summ_est1$surv 
+S_KM #valore della funzione di sopravvivenza
+
+#Nelson Aalen Estimate
+D_j=summ_est1$n.event
+Y_j=summ_est1$n.risk
+t_j=summ_est1$time
+
+S_NA=rep(NA,length(t_j))
+for(i in 1:length(t_j))
+{
+  S_NA[i]=exp(-sum((D_j/Y_j)[t_j<=t_j[i]])) #operatire logico per i vari istanti temporali
+}
+cbind(t_j,S_KM,S_NA)
+
+#Plot KM and NA estimators
+plot(t_j,S_KM,type="s",xlab="Time",ylab="S(t)",xlim=c(0,max(t_j)+1),ylim=c(0,1),xaxs="i",yaxs="i")
+lines(t_j,S_NA,type="s",col="red")
+legend("bottomleft",legend=c("KM","NA"),col=c("black","red"),lty=c(1,1))
+
+#Get restricted mean and median survival
+print(est1,print.rmean=TRUE,rmean=20)
+print(est1,print.rmean=TRUE)
+help("print.survfit")
+summ_est1
+
+
+##########################################################################################
+#####
+#####	Read in 6-MP data
+#####
+setwd("G:\\Il mio Drive\\TRIENNALE\\Biostatistica\\BioStats\\Data")
+
+# 6-MP leukemia trial
+# Time origin: Entry into the study (clinical trial)
+# Event of interest: Cancer relapse
+# Covariate of interest: Treatment with 6-MP
+# all control patients did relapse
+##
+sixmp <- read.table( "sixmp.txt" )
+sixmp[1:5,]
+## tpbo: time-to-event placebo group
+## t6mp: time-to-event 6mp group
+
+#####
+#####	Transform data to long format
+#####
+sixmpLong <- cbind(rep(sixmp$pairid,2), c(sixmp$tpbo,sixmp$t6mp), 
+                     rep(0:1, each=21), c(rep(1,21), sixmp$irelapse ) )
+sixmpLong <- as.data.frame( sixmpLong )
+names(sixmpLong) <- c( "pairid", "time", "sixmp", "irelapse") 
+sixmpLong[ c(1:5,22:26), ]
+
+##
+#####	KM estimates
+##
+
+aaa = survfit( Surv( time, irelapse ) ~ 1, data=sixmpLong, conf.type="log-log" )
+plot(aaa, lty=1, xlab="Study Time (weeks)", ylab="Survival",las=1 ) #las helps to set y-axes scale
+
+plot( survfit(Surv(time, irelapse )~ sixmp, data=sixmpLong ),
+      lty=1:2, xlab="Study Time (weeks)", ylab="Survival" )
+#ottengo quindi 1 curva per i trattati e 1 per i non trattati
+legend( 20, 1, lty=1:2, legend=c("Control (N=21)", "6-MP (N=21)"), bty="n" )
+
+
+###########################################################################################################
+
+##	Source some usefull functions
+source("G:\\Il mio Drive\\TRIENNALE\\Biostatistica\\BioStats\\Functions.R")
+
+##	Read in K & M kidney transplant data - introdotto nella prima lezione (Lezione1.pdf)
+kidney <- read.csv( "kidneytransplant.csv", header=TRUE )
+dim(kidney)
+head(kidney)
+
+##	Recode gender and race to something meaningful
+table(kidney$gender)
+kidney$female <- kidney$gender - 1
+table(kidney$race)
+kidney$black <- kidney$race - 1
+head(kidney)
+
+require("survival")
+## Compute overall KM estimate
+kmEst.all <- survfit( Surv(obstime, death) ~ 1, data=kidney) 
+kmEst.all
+summary( kmEst.all )
+
+
+## Compute and plot KM estimate for each gender
+kmEst.gender <- survfit( Surv(obstime, death) ~ female, data=kidney )
+#pdf( "/Volumes/work/Teaching/Stat255/Spring2011/Lectures/lecture2/graphs/kidney_km.pdf", width=8, height=6)
+plot( kmEst.gender, xscale=365.25, mark.time=F, lty=1:2, ylab="Survival", xlab="Years since transplant"  )
+legend( 1, .6, lty=1:2, legend=c("Male", "Female"), bty="n" )
+#dev.off()
+
+##	Estimated survival probabilities at 6mos, 1yr, and 2yrs
+## Questa funzione fa parte del file "Funzioni.R
+#####	pKM() : Function to pull estimated survival probabilities
+#####			at specified times for a fitted KM estimate"
+pKM(kmEst.gender, q=c(.5,1,2), xscale=365.25 )
+#pKM=probabilita di sopravvivere piu di un certo istante temporale
+# NOTE this function devides the observed times by "xscale"
+
+	
+##	Estimated 75th percentile of the survival distribution by gender
+# Data ordered by strata (male first)
+kmEst.gender
+kmEst.gender$strata
+kmEst.gender$strata[1]
+
+male.est <- as.data.frame(cbind(kmEst.gender$time, kmEst.gender$surv)[1:kmEst.gender$strata[1], ])
+head(male.est)
+
+female.est <- as.data.frame(cbind(kmEst.gender$time, kmEst.gender$surv)[(kmEst.gender$strata[1]+1):sum(kmEst.gender$strata), ] )
+names( male.est ) <- names(female.est) <- c("time", "surv" )
+
+male.est[ min( which(male.est$surv <=.75 ) ), ]
+female.est[ min( which(female.est$surv <=.75 ) ), ]
+
+##	An easier way!		
+#####	qKM() : Function to estimate quantiles of the survival distribution
+#####		  using a fitted KM estimate
+qKM(kmEst.gender, p=c(.85,.75), xscale=365.25 )
+
+# check (differences in time scale)
+2557/365.25
+2795/365.25
+```
